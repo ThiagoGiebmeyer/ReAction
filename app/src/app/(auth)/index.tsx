@@ -10,6 +10,7 @@ import {
   TextInput,
   Keyboard,
   TouchableWithoutFeedback,
+  Platform,
 } from "react-native";
 import * as LinkingExpo from "expo-linking";
 import AppLogo from "@/components/AppLogo";
@@ -22,10 +23,13 @@ import { toast } from "sonner-native";
 
 export const useWarmUpBrowser = () => {
   useEffect(() => {
-    void WebBrowser.warmUpAsync();
-    return () => {
-      void WebBrowser.coolDownAsync();
-    };
+    if (Platform.OS !== "web") {
+      void WebBrowser.warmUpAsync();
+
+      return () => {
+        void WebBrowser.coolDownAsync();
+      };
+    }
   }, []);
 };
 

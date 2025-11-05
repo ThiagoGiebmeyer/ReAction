@@ -74,7 +74,7 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
+      {/* <Tabs.Screen
         name="ranking"
         options={{
           tabBarIcon: ({ color, focused }) => (
@@ -92,7 +92,7 @@ export default function TabLayout() {
             </View>
           ),
         }}
-      />
+      /> */}
     </Tabs>
   );
 }
