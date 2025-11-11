@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -23,12 +23,21 @@ type TitleTextProps = {
 
 const TitleText = ({
   text,
-  textClassName = "color-white font-bold text-2xl",
+  textClassName = "color-white font-bold text-2xl text-justify",
   viewClassName = "w-full my-4 items-center justify-center",
 }: TitleTextProps) => (
   <View className={viewClassName}>
     <Text className={textClassName}>{text}</Text>
   </View>
+);
+
+const HorizontalDivider = ({
+  dividerClassName = "bg-white",
+  containerClassName = "my-4",
+}) => (
+  <View
+    className={`w-full h-[1px] ${containerClassName} ${dividerClassName}`}
+  />
 );
 
 type QuestionDisplayProps = {
@@ -59,7 +68,7 @@ const AnswerButton = ({ text, onPress }: AnswerButtonProps) => (
     className="bg-primary-orange rounded-md p-4 w-full items-center justify-center flex-1 min-h-[70px]"
     onPress={onPress}
   >
-    <Text className="color-white font-extrabold text-2xl md:text-3xl text-center">
+    <Text className="color-white font-bold text-sm md:text-lg text-justify">
       {text}
     </Text>
   </TouchableOpacity>
@@ -95,7 +104,8 @@ type ScoreRowDisplayProps = {
 type HistoryItem = {
   questionIndex: number;
   questionText: string;
-  userId: string;
+  playerId: string;
+  userId?: string;
   username: string;
   userAnswer: number;
   answerText: string;
@@ -105,6 +115,7 @@ type HistoryItem = {
 
 type HistoryRowDisplayProps = {
   data: HistoryItem;
+  currentPlayerId?: string;
 };
 
 const ScoreRowDisplay = ({
@@ -134,31 +145,32 @@ const ScoreRowDisplay = ({
   </View>
 );
 
-const HistoryRowDisplay = ({ data }: HistoryRowDisplayProps) => {
-  console.log(data);
-  return (
-    <View className="bg-primary-orange rounded-md p-4 mb-2 w-full">
-      <View className="flex-row w-full gap-2 items-center">
-        {data.isCorrect ? (
-          <Icon name="CheckCheck" color="yellow" size={16} />
-        ) : (
-          <Icon name="X" color="red" size={16} />
-        )}
+const HistoryRowDisplay = ({
+  data,
+  currentPlayerId,
+}: HistoryRowDisplayProps) => {
+  const isCurrentUser = data.playerId === currentPlayerId;
+  const isUserCorrect = isCurrentUser && data.isCorrect;
 
-        <Text
-          className="color-white font-extrabold text-xl flex-shrink"
-          numberOfLines={1}
-          ellipsizeMode="tail"
-        >
+  return (
+    <View
+      className={`${
+        isUserCorrect ? "bg-primary-green" : "bg-primary-orange"
+      } rounded-md p-4 mb-2 w-full`}
+    >
+      <View className="flex-row w-full gap-2 items-center">
+        <Text className="color-white font-extrabold text-2x1 flex-shrink text-justify">
           {data.questionIndex + 1}#: {data.questionText}
         </Text>
       </View>
+      <HorizontalDivider containerClassName="w-[50%] my-4" />
 
-      <Text className="text-white text-lg italic">
-        {data.username}: {data.correctAnswer + 1}. {data.answerText}
+      <Text className="text-white text-lg italic text-justify">
+        {data.username} respondeu: {data.userAnswer + 1}. {data.answerText}
       </Text>
+      <HorizontalDivider containerClassName="w-[50%] my-4" />
 
-      <Text className="text-mb text-primary-yellow">
+      <Text className="text-mb text-white text-justify">
         Resposta correta: {data.correctAnswer + 1}. {data.answerText}
       </Text>
     </View>
@@ -192,7 +204,13 @@ const RankingListDisplay = ({ scoresData = [] as ScoreItem[] }) => (
   </BlurredContainer>
 );
 
-const HistoryListDisplay = ({ historyData = [] as HistoryItem[] }) => (
+const HistoryListDisplay = ({
+  historyData = [] as HistoryItem[],
+  currentPlayerId,
+}: {
+  historyData: HistoryItem[];
+  currentPlayerId?: string;
+}) => (
   <BlurredContainer containerClassName="gap-2 flex-1 mb-2">
     <TitleText
       text="HISTÓRICO DE RESPOSTAS"
@@ -204,6 +222,7 @@ const HistoryListDisplay = ({ historyData = [] as HistoryItem[] }) => (
         <HistoryRowDisplay
           key={`${historyItem.questionIndex}-${historyItem.userId}-${index}`}
           data={historyItem}
+          currentPlayerId={currentPlayerId}
         />
       ))}
     </ScrollView>
@@ -285,6 +304,8 @@ export default function GameScreen() {
     params.roomCode || null
   );
 
+  const currentPlayerId = socketManager.socket?.id;
+
   const quit = useCallback(async () => {
     if (roomCode && socketManager.socket?.active) {
       socketManager.emit("quit_room", { roomCode }, () => {});
@@ -339,29 +360,16 @@ export default function GameScreen() {
       if (data) {
         setScores(data.scores);
         setAnswerHistory(data.answerHistory);
-        if (data.message) {
-          // toast.info("Fim de Jogo", { description: data.message });
-        }
       }
       setIsGameFinished(true);
     };
 
-    const handleRoomError = (error: { message: string }) => {
-      toast.error("Erro na Sala", {
-        description: error.message || "Ocorreu um problema na sala.",
-        duration: 4000,
-      });
-      quit();
-    };
-
     socketManager.on("new_question", handleNewQuestion);
     socketManager.on("game_over", handleGameOver);
-    // socketManager.on("room_error", handleRoomError);
 
     return () => {
       socketManager.off("new_question", handleNewQuestion);
       socketManager.off("game_over", handleGameOver);
-      // socketManager.off("room_error", handleRoomError);
     };
   }, [roomCode, router, quit]);
 
@@ -417,7 +425,12 @@ export default function GameScreen() {
     <View className="flex-1 w-full items-center justify-start pt-4">
       {scores && <RankingListDisplay scoresData={scores} />}
       <HorizontalLine containerClassName="w-full my-2" />
-      {answerHistory && <HistoryListDisplay historyData={answerHistory} />}
+      {answerHistory && (
+        <HistoryListDisplay
+          historyData={answerHistory}
+          currentPlayerId={currentPlayerId}
+        />
+      )}
       <View className="mt-auto w-full items-center pb-4">
         <ExitButton
           onPress={confirmAndExitGame}

@@ -1,22 +1,44 @@
-const generateQuestionsWithGamini = require('../utils/generateQuestionsWithGamini');
+// ===============================
+// Handlers de eventos do Socket.IO para o jogo
+// ===============================
 
+// Importa utilitário para gerar perguntas e gerenciar salas
+const generateQuestionsWithGemini = require('../utils/generateQuestionsWithGemini');
+const roomsUtil = require('./rooms');
+
+// Nomes dos eventos do socket
+const EVENT_CREATE_ROOM = 'create_room';
+const EVENT_JOIN_ROOM = 'join_room';
+const EVENT_QUIT_ROOM = 'quit_room';
+const EVENT_GET_PLAYERS = 'get_players';
+const EVENT_PLAYER_READY = 'player_ready';
+const EVENT_START_GAME = 'start_game';
+const EVENT_ANSWER = 'answer';
+const EVENT_DISCONNECT = 'disconnect';
+
+// Configurações padrão do jogo
 const DEFAULT_TOPIC = 'Assuntos gerais';
 const DEFAULT_DIFFICULTY = 'Fácil';
 const MAX_PLAYERS_PER_ROOM = 5;
 
-function generateRoomCode() {
-    return Math.random().toString(36).substring(2, 7).toUpperCase();
-}
 
-function registerGameHandlers(io, socket, rooms) {
+// Função principal para registrar todos os handlers de eventos do socket
+function registerGameHandlers(io, socket) {
+    // Gera um código aleatório para a sala
+    const generateRoomCode = () => {
+        return Math.random().toString(36).substring(2, 7).toUpperCase();
+    }
+
+    // Busca uma sala pelo código
     const getRoom = (roomCode) => {
-        const room = rooms[roomCode];
+        const room = roomsUtil.getRoom(roomCode);
         if (!room) {
-            console.warn(`Tentativa de acesso à sala inexistente: ${roomCode} pelo socket ${socket.id}`);
+            console.warn(`[WARN] Tentativa de acesso à sala inexistente: ${roomCode} pelo socket ${socket.id}`);
         }
         return room;
     };
 
+    // Calcula o ranking final dos jogadores da sala
     const getFinalScores = (room) => {
         const finalScoresData = room.players.map(player => {
             return {
@@ -28,29 +50,59 @@ function registerGameHandlers(io, socket, rooms) {
         return finalScoresData.sort((a, b) => b.score - a.score);
     };
 
+    // Verifica se todos os jogadores (exceto o host) estão prontos
     const getAllReadyPlayers = (room) => {
         const hostId = room.hostId;
         const otherPlayers = (room.players ?? []).filter(
             (p) => p.id !== hostId
         );
-
         return otherPlayers.length > 0 && otherPlayers.every((p) => p.isReady);
     };
 
-    socket.on('create_room', async ({
+    // Handler para criar uma nova sala
+    socket.on(EVENT_CREATE_ROOM, async ({
         maxQuestions,
         topic = DEFAULT_TOPIC,
         difficulty = DEFAULT_DIFFICULTY,
+        files = [],
     }, callback) => {
         try {
-            const roomCode = generateRoomCode();
-            const questions = await generateQuestionsWithGamini(maxQuestions, topic, difficulty);
-
-            if (!questions || questions.length === 0) {
-                return callback({ success: false, message: 'Não foi possível gerar perguntas para o jogo.' });
+            console.debug('[DEBUG] Evento create_room recebido:', { maxQuestions, topic, difficulty, files });
+            if (files.length > 3) {
+                console.warn('[WARN] Mais de 3 arquivos enviados:', files.length);
+                return callback({
+                    success: false,
+                    message: 'Você pode enviar no máximo 3 arquivos PDF.'
+                });
             }
 
-            rooms[roomCode] = {
+            // Validação dos arquivos enviados
+            const invalidFiles = files.filter(file =>
+                !file.name?.toLowerCase().endsWith('.pdf') ||
+                !file.url ||
+                (!file.url.startsWith('http') && !file.url.startsWith('/uploads/'))
+            );
+            if (invalidFiles.length > 0) {
+                console.warn('[WARN] Arquivos inválidos detectados:', invalidFiles);
+                return callback({
+                    success: false,
+                    message: 'Arquivos inválidos. Certifique-se de que são PDFs válidos enviados via upload.'
+                });
+            }
+
+            // Gera perguntas com base nos PDFs
+            const roomCode = generateRoomCode();
+            const questions = await generateQuestionsWithGemini(maxQuestions, topic, difficulty, files);
+            if (!questions || questions.length === 0) {
+                console.warn('[WARN] Nenhuma pergunta gerada para a sala', roomCode);
+                return callback({
+                    success: false,
+                    message: 'Não foi possível gerar perguntas para o jogo.'
+                });
+            }
+
+            // Criação da sala no utilitário
+            roomsUtil.createRoom(roomCode, {
                 players: [],
                 questions,
                 currentQuestionIndex: 0,
@@ -64,16 +116,28 @@ function registerGameHandlers(io, socket, rooms) {
                     topic,
                     difficulty,
                 },
-            };
+                files: files.map(f => ({
+                    name: f.name,
+                    url: f.url.startsWith('http')
+                        ? f.url
+                        : `${process.env.SERVER_URL || 'http://localhost:3000'}${f.url}`,
+                })),
+                createdAt: new Date().toISOString(),
+            });
 
+            console.log(`[INFO] Sala ${roomCode} criada com ${files.length} PDF(s).`);
             callback({ success: true, roomCode });
+
         } catch (error) {
-            console.error(`Erro ao criar sala:`, error);
-            callback({ success: false, message: 'Erro interno ao criar a sala.' });
+            console.error('[ERROR] Erro ao criar sala:', error);
+            callback({
+                success: false,
+                message: 'Erro interno ao criar a sala.'
+            });
         }
     });
 
-    socket.on('join_room', ({ roomCode, username }, callback) => {
+    socket.on(EVENT_JOIN_ROOM, ({ roomCode, username }, callback) => {
         const room = getRoom(roomCode);
 
         if (!room) {
@@ -109,7 +173,7 @@ function registerGameHandlers(io, socket, rooms) {
         }
     });
 
-    socket.on('quit_room', ({ roomCode }, callback) => {
+    socket.on(EVENT_QUIT_ROOM, ({ roomCode }, callback) => {
         const room = getRoom(roomCode);
 
         if (!room) {
@@ -137,7 +201,7 @@ function registerGameHandlers(io, socket, rooms) {
                 io.to(roomCode).emit('host_changed', { newHostId: room.hostId, players: room.players });
             } else if (room.players.length === 0) {
                 console.log(`Sala ${roomCode} está vazia, removendo...`);
-                delete rooms[roomCode];
+                roomsUtil.deleteRoom(roomCode);
             }
 
         } else {
@@ -145,8 +209,7 @@ function registerGameHandlers(io, socket, rooms) {
         }
     });
 
-
-    socket.on('get_players', ({ roomCode }, callback) => {
+    socket.on(EVENT_GET_PLAYERS, ({ roomCode }, callback) => {
         const room = getRoom(roomCode);
 
         if (!room) {
@@ -155,8 +218,7 @@ function registerGameHandlers(io, socket, rooms) {
         callback({ success: true, players: room.players });
     });
 
-
-    socket.on('player_ready', ({ roomCode, isReady }) => {
+    socket.on(EVENT_PLAYER_READY, ({ roomCode, isReady }) => {
         const room = getRoom(roomCode);
         if (!room) return;
 
@@ -175,8 +237,7 @@ function registerGameHandlers(io, socket, rooms) {
         });
     });
 
-
-    socket.on('start_game', ({ roomCode }, callback) => {
+    socket.on(EVENT_START_GAME, ({ roomCode }, callback) => {
         const room = getRoom(roomCode);
         if (!room) {
             return callback({ success: false, message: 'Sala não encontrada.' });
@@ -235,7 +296,7 @@ function registerGameHandlers(io, socket, rooms) {
         }
     });
 
-    socket.on('answer', ({ roomCode, answer }, callback) => {
+    socket.on(EVENT_ANSWER, ({ roomCode, answer }, callback) => {
         const room = getRoom(roomCode);
         if (!room) {
             return callback({ success: false, message: 'Sala não encontrada.' });
@@ -303,11 +364,11 @@ function registerGameHandlers(io, socket, rooms) {
         callback({ success: true, correct: isCorrect, currentScore: player.score });
     });
 
-    socket.on('disconnect', () => {
+    socket.on(EVENT_DISCONNECT, () => {
         console.log(`Socket ${socket.id} desconectado.`);
         const roomCode = socket.data?.roomCode;
-        if (roomCode && rooms[roomCode]) {
-            const room = rooms[roomCode];
+        if (roomCode && roomsUtil.getRoom(roomCode)) {
+            const room = roomsUtil.getRoom(roomCode);
             const playerIndex = room.players.findIndex(p => p.id === socket.id);
 
             if (playerIndex !== -1) {
@@ -328,7 +389,7 @@ function registerGameHandlers(io, socket, rooms) {
 
                 if (room.players.length === 0) {
                     console.log(`Sala ${roomCode} está vazia após desconexão, removendo...`);
-                    delete rooms[roomCode];
+                    roomsUtil.deleteRoom(roomCode);
                 }
             }
         }
@@ -337,5 +398,4 @@ function registerGameHandlers(io, socket, rooms) {
 
 module.exports = {
     registerGameHandlers,
-    generateRoomCode,
 };

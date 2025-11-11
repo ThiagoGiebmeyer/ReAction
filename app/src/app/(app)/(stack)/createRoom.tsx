@@ -1,25 +1,27 @@
+import ActionButton from "@/components/ActionButton";
+import AppLogo from "@/components/AppLogo";
+import BlurredContainer from "@/components/BlurredContainer";
 import Icon from "@/components/Icon";
+import Lottie from "@/components/Lottie";
+import PdfList from "@/components/PdfList";
 import socketManager from "@/socket/socketManager";
+import { getLocal, saveLocal } from "@/utils/roomSession";
+import { useUser } from "@clerk/clerk-expo";
+import * as DocumentPicker from "expo-document-picker";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   ImageBackground,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { getLocal, saveLocal } from "@/utils/roomSession";
-import { toast } from "sonner-native";
-import AppLogo from "@/components/AppLogo";
-import ActionButton from "@/components/ActionButton";
 import { SafeAreaView } from "react-native-safe-area-context";
-import BlurredContainer from "@/components/BlurredContainer";
-import Lottie from "@/components/Lottie";
-import { useUser } from "@clerk/clerk-expo";
+import { toast } from "sonner-native";
 
 const difficultiesData = ["Fácil", "Médio", "Difícil"];
-const themesData = ["Geral", "Ciências", "Tecnologia", "Geografia"];
 
 type FormSectionTitleProps = {
   text: string;
@@ -59,7 +61,7 @@ const TitledDivider: React.FC<TitledDividerProps> = ({
   >
     <View className={`h-[1px] ${lineWidthClass} ${lineClassName}`} />
     <Text
-      className={`color-white font-extrabold text-2xl px-4 ${titleClassName}`}
+      className={`color-white font-extrabold text-2xl px-4 text-center ${titleClassName}`}
     >
       {title}
     </Text>
@@ -82,12 +84,8 @@ const NumberStepper: React.FC<NumberStepperProps> = ({
   maxValue = 20,
   iconColor = "white",
 }) => {
-  const handleDecrement = () => {
-    onValueChange(Math.max(minValue, value - 1));
-  };
-  const handleIncrement = () => {
-    onValueChange(Math.min(maxValue, value + 1));
-  };
+  const handleDecrement = () => onValueChange(Math.max(minValue, value - 1));
+  const handleIncrement = () => onValueChange(Math.min(maxValue, value + 1));
 
   return (
     <View className="flex-row w-full items-center justify-center bg-primary-sBlue rounded-md">
@@ -110,6 +108,33 @@ const NumberStepper: React.FC<NumberStepperProps> = ({
   );
 };
 
+type CustomTextInputProps = {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  maxLength?: number;
+};
+
+const CustomTextInput: React.FC<CustomTextInputProps> = ({
+  value,
+  onChangeText,
+  placeholder = "",
+  maxLength = 50,
+}) => (
+  <View className="w-full bg-primary-sBlue rounded-md px-4 py-3">
+    <TextInput
+      placeholderTextColor={"#B0B0B0"}
+      className="bg-white p-6 w-full rounded-sm text-primary-orange font-bold text-xl "
+      autoCapitalize="characters"
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      keyboardType="default"
+      maxLength={maxLength}
+    />
+  </View>
+);
+
 type SelectableButtonProps = {
   label: string;
   selected: boolean;
@@ -127,10 +152,9 @@ const SelectableButton: React.FC<SelectableButtonProps> = ({
 }) => {
   const getBackgroundColor = () => {
     if (!selected) return "bg-primary-green";
-
     switch (label.toLowerCase()) {
       case "fácil":
-        return "bg-primary-yellow"; 
+        return "bg-primary-yellow";
       case "médio":
         return "bg-primary-orange";
       case "difícil":
@@ -156,8 +180,6 @@ type OptionsSelectorProps = {
   items: string[];
   selectedItem: string;
   onSelectItem: (item: string) => void;
-  horizontalLayout?: boolean;
-  itemWrapperClassName?: string;
   groupClassName?: string;
   buttonClassName?: string;
 };
@@ -194,46 +216,113 @@ const HorizontalDivider = ({
 export default function CreateRoom() {
   const router = useRouter();
   const { user } = useUser();
-
   const [countQuestions, setCountQuestions] = useState(5);
   const [difficulty, setDifficulty] = useState("Fácil");
-  const [theme, setTheme] = useState("Geral");
+  const [theme, setTheme] = useState("SOBRE O MATERIAL DE APOIO");
+  const [files, setFiles] = useState<Array<{ name: string; uri: string }>>([]);
   const [loading, setLoading] = useState(false);
 
   const goBack = () => router.back();
 
-  const handleCreateRoom = () => {
-    setLoading(true);
-    interface CreateRoomResponse {
-      roomCode?: string;
-      error?: string;
-      [key: string]: any;
-    }
-
-    interface CreateRoomPayload {
-      maxQuestions: number;
-      topic: string;
-      difficulty: string;
-    }
-
-    socketManager.emit(
-      "create_room",
-      {
-        maxQuestions: countQuestions,
-        topic: theme,
-        difficulty,
-      } as CreateRoomPayload,
-      (response: CreateRoomResponse) => {
-        if (response?.roomCode) {
-          handleJoinRoom(response?.roomCode);
-        } else {
-          setLoading(false);
-          toast.error("Erro ao criar sala.", {
-            description: response?.error || "Tente novamente.",
-          });
-        }
+  const handleSelectPdf = async () => {
+    try {
+      if (files.length >= 3) {
+        toast.error("Você pode adicionar no máximo 3 arquivos PDF.");
+        return;
       }
-    );
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        multiple: false,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const picked = result.assets[0];
+        const isPdf = picked.name.toLowerCase().endsWith(".pdf");
+
+        if (!isPdf) {
+          toast.error("Apenas arquivos PDF são permitidos.");
+          return;
+        }
+
+        const newFile = { name: picked.name, uri: picked.uri };
+        setFiles((prev) => [...prev, newFile]);
+      }
+    } catch {
+      toast.error("Não foi possível selecionar o arquivo PDF.");
+    }
+  };
+
+  const handleRemovePdf = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadPdfs = async () => {
+    if (files.length === 0) return [];
+
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append("files", {
+        uri: file.uri,
+        name: file.name,
+        type: "application/pdf",
+      } as any);
+    });
+
+    const SERVER_URL = "http://10.1.1.187:3001";
+    await fetch(`${SERVER_URL}/upload/all`, {
+      method: "DELETE",
+    });
+
+    const response = await fetch(`${SERVER_URL}/upload`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Erro ao enviar arquivos");
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.message || "Falha no upload");
+    }
+
+    return result.files; // [{ name, url }]
+  };
+
+  const handleCreateRoom = async () => {
+    try {
+      setLoading(true);
+
+      const uploadedFiles = await uploadPdfs();
+
+      socketManager.emit(
+        "create_room",
+        {
+          maxQuestions: countQuestions,
+          topic: theme,
+          difficulty,
+          files: uploadedFiles,
+        },
+        (response: {
+          success?: boolean;
+          roomCode?: string;
+          message?: string;
+        }) => {
+          setLoading(false);
+          if (response?.success && response.roomCode) {
+            handleJoinRoom(response?.roomCode);
+          } else {
+            toast.error(response?.message || "Erro ao criar sala.");
+          }
+        }
+      );
+    } catch (error: any) {
+      setLoading(false);
+      console.error("Erro ao criar sala:", error);
+      toast.error(error.message || "Erro inesperado ao criar sala.");
+    }
   };
 
   const handleJoinRoom = async (roomCode: string) => {
@@ -249,9 +338,9 @@ export default function CreateRoom() {
       message?: string;
     }
     const username =
-      user?.fullName ?? await getLocal("guestName") ??  "Não identificado";
+      user?.fullName ?? (await getLocal("guestName")) ?? "Não identificado";
 
-      socketManager.emit(
+    socketManager.emit(
       "join_room",
       { roomCode, username: String(username) },
       (result: JoinRoomResult) => {
@@ -334,13 +423,23 @@ export default function CreateRoom() {
             />
 
             <TitledDivider title="ASSUNTO" />
-            <OptionsSelector
-              items={themesData}
-              selectedItem={theme}
-              onSelectItem={setTheme}
-              groupClassName="w-full flex-row flex-wrap justify-around gap-2 "
-              buttonClassName="w-[48%]"
+            <CustomTextInput
+              value={theme}
+              onChangeText={(e) => setTheme(e.toUpperCase())}
+              placeholder="Digite o assunto da sala..."
+              maxLength={50}
             />
+
+            <TitledDivider title="MATERIAL DE APOIO" />
+            <ActionButton
+              onPress={handleSelectPdf}
+              title={`Adicionar PDF (${files.length}/3)`}
+              buttonClassName="bg-primary-green"
+              textClassName="color-white"
+              disabled={files.length >= 3 || loading}
+            />
+
+            <PdfList files={files} onRemove={handleRemovePdf} />
 
             <ActionButton
               onPress={handleCreateRoom}
@@ -357,7 +456,7 @@ export default function CreateRoom() {
             <ActionButton
               onPress={goBack}
               title="Voltar"
-              buttonClassName="bg-primary-orange"
+              buttonClassName="bg-transparent "
               textClassName="color-white"
               disabled={loading}
             />

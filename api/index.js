@@ -42,22 +42,3 @@ listener.on('error', (error) => {
             throw error; // Re-lança o erro se não for um dos erros comuns de 'listen'
     }
 });
-
-// Opcional: Lidar com sinais para desligamento gracioso (graceful shutdown)
-// Isso é mais avançado e útil para produção, para garantir que conexões ativas sejam finalizadas.
-// process.on('SIGTERM', () => {
-//     console.log('👋 Sinal SIGTERM recebido. Fechando o servidor HTTP...');
-//     listener.close(() => {
-//         console.log('✅ Servidor HTTP fechado.');
-//         // Aqui você pode fechar outras conexões, como banco de dados
-//         process.exit(0);
-//     });
-// });
-
-// process.on('SIGINT', () => { // Captura Ctrl+C
-//     console.log('👋 Sinal SIGINT (Ctrl+C) recebido. Fechando o servidor HTTP...');
-//     listener.close(() => {
-//         console.log('✅ Servidor HTTP fechado.');
-//         process.exit(0);
-//     });
-// });
