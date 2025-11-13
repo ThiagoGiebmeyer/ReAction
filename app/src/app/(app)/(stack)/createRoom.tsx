@@ -11,7 +11,9 @@ import * as DocumentPicker from "expo-document-picker";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   ImageBackground,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -121,7 +123,7 @@ const CustomTextInput: React.FC<CustomTextInputProps> = ({
   placeholder = "",
   maxLength = 50,
 }) => (
-  <View className="w-full bg-primary-sBlue rounded-md px-4 py-3">
+  <View className="w-full bg-primary-sBlue rounded-md px-1 py-1">
     <TextInput
       placeholderTextColor={"#B0B0B0"}
       className="bg-white p-6 w-full rounded-sm text-primary-orange font-bold text-xl "
@@ -218,7 +220,7 @@ export default function CreateRoom() {
   const { user } = useUser();
   const [countQuestions, setCountQuestions] = useState(5);
   const [difficulty, setDifficulty] = useState("Fácil");
-  const [theme, setTheme] = useState("SOBRE O MATERIAL DE APOIO");
+  const [theme, setTheme] = useState("");
   const [files, setFiles] = useState<Array<{ name: string; uri: string }>>([]);
   const [loading, setLoading] = useState(false);
 
@@ -269,7 +271,8 @@ export default function CreateRoom() {
       } as any);
     });
 
-    const SERVER_URL = "http://10.1.1.187:3001";
+    const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
+    console.log("SERVER_URL:", SERVER_URL);
     await fetch(`${SERVER_URL}/upload/all`, {
       method: "DELETE",
     });
@@ -293,6 +296,13 @@ export default function CreateRoom() {
 
   const handleCreateRoom = async () => {
     try {
+      if (!theme.length && !files.length) {
+        toast.error(
+          "Por favor, insira um assunto ou adicione um material de apoio."
+        );
+        return;
+      }
+
       setLoading(true);
 
       const uploadedFiles = await uploadPdfs();
@@ -301,7 +311,12 @@ export default function CreateRoom() {
         "create_room",
         {
           maxQuestions: countQuestions,
-          topic: theme,
+          topic:
+            theme.length > 0
+              ? theme
+              : files.length > 0
+              ? "SOBRE O MATERIAL DE APOIO"
+              : "GERAL",
           difficulty,
           files: uploadedFiles,
         },
@@ -372,13 +387,18 @@ export default function CreateRoom() {
           <View className="flex-1 w-full h-full items-center justify-center">
             <BlurredContainer>
               <View className="w-full p-8 py-16 items-center justify-center">
-                <Lottie
+                {
+                  Platform.OS === "web" ? (
+                    <ActivityIndicator size={32}/>
+                  )
+                  : <Lottie
                   source={require("@/assets/animations/loadingAnimation.json")}
                   autoPlay
                   loop
                   style={{ width: 200, height: 200 }}
                 />
-                <Text className="color-white font-extrabold text-2xl mt-4">
+                }
+                <Text className="color-white font-extrabold text-2xl mt-4 self-center">
                   Criando sala, aguarde...
                 </Text>
               </View>

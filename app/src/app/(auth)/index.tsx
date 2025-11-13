@@ -204,7 +204,7 @@ export default function SignInScreen() {
               }
               buttonClassName="bg-primary-orange"
               textClassName="color-white text-lg"
-              disabled={isProcessing !== null || !isLoaded}
+              disabled={isProcessing !== null || !isLoaded || true}
             />
             <ActionButton
               onPress={() => handleSocialSignIn("oauth_facebook")}
@@ -215,7 +215,7 @@ export default function SignInScreen() {
               }
               buttonClassName="bg-primary-orange"
               textClassName="color-white text-lg"
-              disabled={isProcessing !== null || !isLoaded}
+              disabled={isProcessing !== null || !isLoaded || true}
             />
             <ActionButton
               onPress={() => handleSocialSignIn("oauth_github")}
@@ -226,7 +226,7 @@ export default function SignInScreen() {
               }
               buttonClassName="bg-primary-orange"
               textClassName="color-white text-lg"
-              disabled={isProcessing !== null || !isLoaded}
+              disabled={isProcessing !== null || !isLoaded || true}
             />
           </View>
         </SafeAreaView>

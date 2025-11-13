@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   ImageBackground,
   Alert,
+  Platform,
 } from "react-native";
 import { useUser, useClerk } from "@clerk/clerk-expo";
 import React from "react";
@@ -34,8 +35,18 @@ export default function Tab() {
         "email@exemplo.com"
       : "";
 
+  const resetToAuth = async () => {
+    await clearLocal("guestName");
+    await signOut();
+    router.replace(`/(auth)`);
+  };
+
   const logOut = async () => {
     try {
+      if (Platform.OS === "web") {
+        return resetToAuth();
+      }
+
       Alert.alert("Atenção!", "Deseja realmente sair?", [
         {
           text: "Cancelar",
@@ -44,11 +55,7 @@ export default function Tab() {
         {
           text: "Sair",
           style: "destructive",
-          onPress: async () => {
-            await clearLocal("guestName");
-            await signOut();
-            router.replace(`/(auth)`);
-          },
+          onPress: resetToAuth,
         },
       ]);
     } catch (error) {

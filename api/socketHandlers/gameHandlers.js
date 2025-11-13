@@ -275,7 +275,8 @@ function registerGameHandlers(io, socket) {
                 if (cutdown < 0) {
                     clearInterval(intervalRef);
                     const question = room.questions[room.currentQuestionIndex];
-
+                    // Bloqueia as respostas ao enviar nova pergunta
+                    io.to(roomCode).emit('block_answers');
                     io.to(roomCode).emit('new_question', {
                         question: {
                             question: question.question,
@@ -284,6 +285,10 @@ function registerGameHandlers(io, socket) {
                             total: room.questions.length
                         }
                     });
+                    // Desbloqueia após 3 segundos
+                    setTimeout(() => {
+                        io.to(roomCode).emit('unblock_answers');
+                    }, 3000);
                 }
             }, 1000);
             callback({ success: true });
@@ -344,6 +349,8 @@ function registerGameHandlers(io, socket) {
 
         if (room.currentQuestionIndex < room.questions.length) {
             const nextQuestion = room.questions[room.currentQuestionIndex];
+            // Bloqueia as respostas ao enviar nova pergunta
+            io.to(roomCode).emit('block_answers');
             io.to(roomCode).emit('new_question', {
                 question: {
                     question: nextQuestion.question,
@@ -353,6 +360,10 @@ function registerGameHandlers(io, socket) {
                 },
                 scores: getFinalScores(room)
             });
+            // Desbloqueia após 3 segundos
+            setTimeout(() => {
+                io.to(roomCode).emit('unblock_answers');
+            }, 3000);
         } else {
             const finalScores = getFinalScores(room);
             io.to(roomCode).emit('game_over', {

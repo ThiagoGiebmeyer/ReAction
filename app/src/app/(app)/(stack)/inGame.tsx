@@ -58,15 +58,18 @@ const QuestionDisplay = ({ index, text }: QuestionDisplayProps) => (
   </BlurredContainer>
 );
 
+
 type AnswerButtonProps = {
   text: string;
   onPress: () => void;
+  disabled?: boolean;
 };
 
-const AnswerButton = ({ text, onPress }: AnswerButtonProps) => (
+const AnswerButton = ({ text, onPress, disabled = false }: AnswerButtonProps) => (
   <TouchableOpacity
-    className="bg-primary-orange rounded-md p-4 w-full items-center justify-center flex-1 min-h-[70px]"
-    onPress={onPress}
+    className={`bg-primary-orange rounded-md p-4 w-full items-center justify-center flex-1 min-h-[70px] ${disabled ? 'opacity-50' : ''}`}
+    onPress={disabled ? undefined : onPress}
+    disabled={disabled}
   >
     <Text className="color-white font-bold text-sm md:text-lg text-justify">
       {text}
@@ -74,14 +77,17 @@ const AnswerButton = ({ text, onPress }: AnswerButtonProps) => (
   </TouchableOpacity>
 );
 
+
 type AnswerOptionsListProps = {
   options: string[];
   onSelectAnswer: (index: number) => void;
+  isBlocked?: boolean;
 };
 
 const AnswerOptionsList = ({
   options,
   onSelectAnswer,
+  isBlocked = false,
 }: AnswerOptionsListProps) => (
   <BlurredContainer containerClassName="gap-4 flex-1">
     {options?.map((optionText, idx) => (
@@ -89,6 +95,7 @@ const AnswerOptionsList = ({
         key={idx}
         text={optionText}
         onPress={() => onSelectAnswer(idx)}
+        disabled={isBlocked}
       />
     ))}
   </BlurredContainer>
@@ -297,12 +304,9 @@ export default function GameScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isGameFinished, setIsGameFinished] = useState(false);
   const [scores, setScores] = useState<ScoreItem[] | null>(null);
-  const [answerHistory, setAnswerHistory] = useState<HistoryItem[] | null>(
-    null
-  );
-  const [roomCode, setRoomCode] = useState<string | null>(
-    params.roomCode || null
-  );
+  const [answerHistory, setAnswerHistory] = useState<HistoryItem[] | null>(null);
+  const [roomCode, setRoomCode] = useState<string | null>(params.roomCode || null);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   const currentPlayerId = socketManager.socket?.id;
 
@@ -364,12 +368,23 @@ export default function GameScreen() {
       setIsGameFinished(true);
     };
 
+    const handleBlockAnswers = () => {
+      setIsBlocked(true);
+    };
+    const handleUnblockAnswers = () => {
+      setIsBlocked(false);
+    };
+
     socketManager.on("new_question", handleNewQuestion);
     socketManager.on("game_over", handleGameOver);
+    socketManager.on("block_answers", handleBlockAnswers);
+    socketManager.on("unblock_answers", handleUnblockAnswers);
 
     return () => {
       socketManager.off("new_question", handleNewQuestion);
       socketManager.off("game_over", handleGameOver);
+      socketManager.off("block_answers", handleBlockAnswers);
+      socketManager.off("unblock_answers", handleUnblockAnswers);
     };
   }, [roomCode, router, quit]);
 
@@ -411,6 +426,7 @@ export default function GameScreen() {
         <AnswerOptionsList
           options={question?.options ?? []}
           onSelectAnswer={handleAnswerSubmission}
+          isBlocked={isBlocked}
         />
       )}
       <HorizontalLine containerClassName="w-full my-2" />

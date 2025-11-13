@@ -5,7 +5,7 @@ class SocketManager {
         this.socket = null;
     }
 
-    connect(serverUrl = 'http://10.1.1.187:3001') {
+    connect(serverUrl = process.env.EXPO_PUBLIC_SERVER_URL) {
         if (!this.socket) {
             this.socket = io(serverUrl, {
                 autoConnect: false,
